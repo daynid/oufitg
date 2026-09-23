@@ -205,6 +205,8 @@ outfitCategories = {}
 spectateTarget = nil
 spectateConn = nil
 spectateStatusLabel = nil
+perfHudLabel = nil
+perfHudConn = nil
 
 local function new(className, props, parent)
     local instance = Instance.new(className)
@@ -3146,6 +3148,46 @@ if savedRpName ~= "" then
         end)
     end)
 end
+
+perfHudLabel = new("TextLabel", {
+    Size = UDim2.new(0, 160, 0, 22),
+    Position = UDim2.new(0, 10, 1, -30),
+    BackgroundColor3 = Color3.new(0, 0, 0),
+    BackgroundTransparency = 0.35,
+    Text = "FPS: ... | MS: ...",
+    TextSize = 13,
+    TextColor3 = Color3.new(255, 255, 255),
+    Font = FONT_BOLD,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    ZIndex = 999,
+}, ScreenGui)
+local perfFpsAvg = 0
+local perfFrameCount = 0
+local perfLastTime = 0
+local perfPingItem = nil
+pcall(function() perfPingItem = game:GetService("Stats").Network.ServerStatsItem["Data Ping"] end)
+perfHudConn = RunService.RenderStepped:Connect(function()
+    local now = os.clock()
+    perfFrameCount = perfFrameCount + 1
+    if perfLastTime == 0 then perfLastTime = now end
+    local elapsed = now - perfLastTime
+    if elapsed >= 0.5 then
+        local fps = perfFrameCount / elapsed
+        perfFpsAvg = perfFpsAvg * 0.7 + fps * 0.3
+        perfLastTime = now
+        perfFrameCount = 0
+    end
+    local ms = 0
+    if perfPingItem then
+        pcall(function() ms = math.floor(perfPingItem:GetValue()) end)
+    end
+    if perfHudLabel then
+        perfHudLabel.Text = "FPS: " .. math.floor(perfFpsAvg) .. " | MS: " .. tostring(ms)
+    end
+end)
+addCleanup(function()
+    if perfHudConn then pcall(function() perfHudConn:Disconnect() end) perfHudConn = nil end
+end)
 
 _G.__OH_CLEANUP = function()
     for _, espData in pairs(espCache) do
