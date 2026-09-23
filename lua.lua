@@ -21,8 +21,22 @@ local Players = game:GetService("Players")
 local VirtualUser = game:GetService("VirtualUser")
 local TeleportService = game:GetService("TeleportService")
 local localPlayer = Players.LocalPlayer
+if not localPlayer then
+    for _ = 1, 600 do
+        task.wait()
+        localPlayer = Players.LocalPlayer
+        if localPlayer then break end
+    end
+end
 local mouse = localPlayer:GetMouse()
 local camera = workspace.CurrentCamera
+if not camera then
+    for _ = 1, 200 do
+        task.wait()
+        camera = workspace.CurrentCamera
+        if camera then break end
+    end
+end
 
 local FILENAME = "MesTenuesSauvegardees.json"
 local SETTINGS_FILENAME = "OutfitStudioSettings.json"
@@ -192,6 +206,8 @@ keybindNoclip = nil
 keybindFly = nil
 keybindSpeed = nil
 keybindClick = nil
+keybindClickTp = nil
+clickTpEnabled = false
 rpNamePhrases = {}
 _savedChatTag = ""
 _savedChatTagColor = "#FF0000"
@@ -480,6 +496,8 @@ local function loadUiPositions()
             if type(data.KeybindFly) == "string" and data.KeybindFly ~= "" then keybindFly = Enum.KeyCode[data.KeybindFly] end
             if type(data.KeybindSpeed) == "string" and data.KeybindSpeed ~= "" then keybindSpeed = Enum.KeyCode[data.KeybindSpeed] end
             if type(data.KeybindClick) == "string" and data.KeybindClick ~= "" then keybindClick = Enum.KeyCode[data.KeybindClick] end
+            if type(data.KeybindClickTp) == "string" and data.KeybindClickTp ~= "" then keybindClickTp = Enum.KeyCode[data.KeybindClickTp] end
+            if type(data.ClickTp) == "boolean" then clickTpEnabled = data.ClickTp end
             if type(data.RpNamePhrases) == "table" then rpNamePhrases = data.RpNamePhrases end
             if type(data.Esp) == "boolean" then espEnabled = data.Esp end
             if type(data.Noclip) == "boolean" then noclipEnabled = data.Noclip end
@@ -521,6 +539,8 @@ saveUiPositions = function()
             KeybindFly = keybindFly and keybindFly.Name or nil,
             KeybindSpeed = keybindSpeed and keybindSpeed.Name or nil,
             KeybindClick = keybindClick and keybindClick.Name or nil,
+            KeybindClickTp = keybindClickTp and keybindClickTp.Name or nil,
+            ClickTp = clickTpEnabled,
             RpNamePhrases = rpNamePhrases,
             ChatTag = _savedChatTag,
             ChatTagColor = _savedChatTagColor,
@@ -696,6 +716,42 @@ local function stopFly()
     if hum then hum.PlatformStand = false end
 end
 
+local notificationGui = nil
+
+local function showNotification(text, duration)
+    if not uiRoot then return end
+    if notificationGui then pcall(function() notificationGui:Destroy() end) end
+    local notif = new("Frame", {
+        Size = UDim2.new(0, 300, 0, 40),
+        Position = UDim2.new(0.5, -150, 1, 60),
+        BackgroundColor3 = C.panel,
+        ZIndex = 50,
+    }, uiRoot)
+    withCorner(notif, 10)
+    withStroke(notif, C.teal, 1)
+    new("TextLabel", {
+        Text = text,
+        TextSize = 13,
+        TextColor3 = C.text,
+        Font = FONT,
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, -20, 1, 0),
+        Position = UDim2.new(0, 10, 0, 0),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 51,
+    }, notif)
+    notificationGui = notif
+    tw(notif, { Position = UDim2.new(0.5, -150, 1, -50) }, 0.3, Enum.EasingStyle.Back)
+    task.delay(duration or 2, function()
+        if notif and notif.Parent then
+            tw(notif, { Position = UDim2.new(0.5, -150, 1, 60) }, 0.25)
+            task.wait(0.25)
+            if notif and notif.Parent then notif:Destroy() end
+            if notificationGui == notif then notificationGui = nil end
+        end
+    end)
+end
+
 local function teleportToPlayer(player)
     if not player then return false end
     local char = localPlayer.Character
@@ -841,42 +897,6 @@ local function setZoomDistance(dist)
     pcall(function()
         camera.MaxZoomDistance = dist
         camera.MinZoomDistance = 0.5
-    end)
-end
-
-local notificationGui = nil
-
-local function showNotification(text, duration)
-    if not uiRoot then return end
-    if notificationGui then pcall(function() notificationGui:Destroy() end) end
-    local notif = new("Frame", {
-        Size = UDim2.new(0, 300, 0, 40),
-        Position = UDim2.new(0.5, -150, 1, 60),
-        BackgroundColor3 = C.panel,
-        ZIndex = 50,
-    }, uiRoot)
-    withCorner(notif, 10)
-    withStroke(notif, C.teal, 1)
-    new("TextLabel", {
-        Text = text,
-        TextSize = 13,
-        TextColor3 = C.text,
-        Font = FONT,
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, -20, 1, 0),
-        Position = UDim2.new(0, 10, 0, 0),
-        TextXAlignment = Enum.TextXAlignment.Left,
-        ZIndex = 51,
-    }, notif)
-    notificationGui = notif
-    tw(notif, { Position = UDim2.new(0.5, -150, 1, -50) }, 0.3, Enum.EasingStyle.Back)
-    task.delay(duration or 2, function()
-        if notif and notif.Parent then
-            tw(notif, { Position = UDim2.new(0.5, -150, 1, 60) }, 0.25)
-            task.wait(0.25)
-            if notif and notif.Parent then notif:Destroy() end
-            if notificationGui == notif then notificationGui = nil end
-        end
     end)
 end
 
@@ -1627,11 +1647,14 @@ titleBar.InputChanged:Connect(function(input)
         dragInput = input
     end
 end)
-UserInputService.InputChanged:Connect(function(input)
+local dragInputChangedConn = UserInputService.InputChanged:Connect(function(input)
     if input == dragInput and dragToggle then
         local delta = input.Position - dragStart
         Window.Position = UDim2.new(dragPos.X.Scale, dragPos.X.Offset + delta.X, dragPos.Y.Scale, dragPos.Y.Offset + delta.Y)
     end
+end)
+addCleanup(function()
+    if dragInputChangedConn then pcall(function() dragInputChangedConn:Disconnect() end) end
 end)
 titleBar.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -1738,7 +1761,7 @@ local function switchTab(name)
             tw(item.indicator, { BackgroundTransparency = 1 }, 0.2)
         end
     end
-local titles = {
+    local titles = {
         outfits = "Mes Tenues",
         webhook = "Discord Webhook",
         import = "Importer un Skin",
@@ -1815,6 +1838,10 @@ end)
 
 local clickToggle = makeToggle(outfitsPage, "Mode vol au clic", function() return clickModeActive end, function(state)
     clickModeActive = state
+end)
+
+local clickTpToggle = makeToggle(outfitsPage, "Click TP (clique un joueur)", function() return clickTpEnabled end, function(state)
+    clickTpEnabled = state
 end)
 
 local saveRow = new("Frame", { Size = UDim2.new(1, 0, 0, 42), BackgroundTransparency = 1 }, outfitsPage)
@@ -1992,6 +2019,7 @@ makeKeybindRow(movePage, "Noclip", keybindNoclip, function(key) keybindNoclip = 
 makeKeybindRow(movePage, "Fly", keybindFly, function(key) keybindFly = key; saveUiPositions() end)
 makeKeybindRow(movePage, "Speed x2", keybindSpeed, function(key) keybindSpeed = key; saveUiPositions() end)
 makeKeybindRow(movePage, "Click (vol de tenue)", keybindClick, function(key) keybindClick = key; saveUiPositions() end)
+makeKeybindRow(movePage, "Click TP", keybindClickTp, function(key) keybindClickTp = key; saveUiPositions() end)
 
 makeLabel(settingsPage, "REGLAGES", 11, C.teal, 18)
 local ThemeBtn = makeButton(settingsPage, "Theme : " .. (themeName == "dark" and "Sombre" or "Clair"), UDim2.new(1, 0, 0, 42), C.teal)
@@ -2859,12 +2887,19 @@ local function getClickedPlayer(target)
 end
 
 local button1DownConn = mouse.Button1Down:Connect(function()
-    if not clickModeActive then return end
     if isClickingGui() then return end
     local target = mouse.Target
     if not target then return end
     local player = getClickedPlayer(target)
     if not player or player == localPlayer then return end
+    if clickTpEnabled then
+        task.spawn(function()
+            local ok = teleportToPlayer(player)
+            showNotification(ok and ("TP vers: " .. player.Name) or ("TP impossible: " .. player.Name))
+        end)
+        return
+    end
+    if not clickModeActive then return end
     print("[OutfitHub] Tenue volee sur: " .. player.Name .. " (ID: " .. player.UserId .. ")")
     local rawProps, rigType = getOutfitFromCharacter(player.Character)
     if not rawProps then
@@ -3077,9 +3112,16 @@ local keybindConn = UserInputService.InputBegan:Connect(function(input, gpe)
     end
     if keybindClick and input.KeyCode == keybindClick then
         clickModeActive = not clickModeActive
-        clickToggle.set(clickModeActive)
+clickToggle.set(clickModeActive)
+clickTpToggle.set(clickTpEnabled)
         saveUiPositions()
         showNotification("Click mode: " .. (clickModeActive and "ON" or "OFF"))
+    end
+    if keybindClickTp and input.KeyCode == keybindClickTp then
+        clickTpEnabled = not clickTpEnabled
+        clickTpToggle.set(clickTpEnabled)
+        saveUiPositions()
+        showNotification("Click TP: " .. (clickTpEnabled and "ON" or "OFF"))
     end
 end)
 addCleanup(function() keybindConn:Disconnect() end)
